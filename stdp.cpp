@@ -93,6 +93,8 @@ using namespace std;
 MatrixXd poissonMatrix(const MatrixXd& lambd);
 MatrixXd poissonMatrix2(const MatrixXd& lambd);
 int poissonScalar(const double lambd);
+void saveMatrix(MatrixXd& wgt, string fn);
+void saveVector(VectorXd& wgt, string fn);
 void saveWeights(MatrixXd& wgt, string fn);
 void readWeights(MatrixXd& wgt, string fn);
 
@@ -300,6 +302,7 @@ int main(int argc, char* argv[])
 
     // The incoming spikes (both lateral and FF) are stored in an array of vectors (one per neuron/incoming synapse); each vector is used as a circular array, containing the incoming spikes at this synapse at successive timesteps:
     VectorXi incomingspikes[NBNEUR][NBNEUR];
+    int incomingspikes2[NBNEUR][NBNEUR];
     //VectorXi incomingFFspikes[NBNEUR][FFRFSIZE];
 
 
@@ -344,6 +347,10 @@ int main(int argc, char* argv[])
     VectorXd lgnratesS1 = VectorXd::Zero(FFRFSIZE);
     VectorXd lgnratesS2 = VectorXd::Zero(FFRFSIZE);
     VectorXd lgnfirings = VectorXd::Zero(FFRFSIZE);
+
+    int stepsRand = NBSTEPSPERPRES - ((double)TIMEZEROINPUT / dt);
+    MatrixXd randlgnrates = MatrixXd::Zero(stepsRand,FFRFSIZE);
+    MatrixXd alllgnfirings = MatrixXd::Zero(NBSTEPSPERPRES,FFRFSIZE);
     //VectorXd lgnfiringsprev = VectorXd::Zero(FFRFSIZE);
 
     //VectorXd sumwff = VectorXd::Zero(NBPRES);
@@ -369,6 +376,7 @@ int main(int argc, char* argv[])
     // There's very likely simpler ways to do it.
 
     // DELAYPARAM should be a small value (3 to 6). It controls the median of the exponential.
+
     for (int ni=0; ni < NBNEUR; ni++){
         for (int nj=0; nj < NBNEUR; nj++){
 
@@ -385,8 +393,29 @@ int main(int argc, char* argv[])
             // cout << mydelay << " ";
             delays[nj][ni] = mydelay;
             incomingspikes[ni][nj] = VectorXi::Zero(mydelay);
+            incomingspikes2[ni][nj] = 0;
         }
     }
+    {
+        string fname = "data/delays.dat";
+        int wdata[NBNEUR*NBNEUR];
+        int idx=0;
+        //cout << endl << "Saving weights..." << endl;
+        for (int rr=0; rr < NBNEUR; rr++)
+            for (int cc=0; cc < NBNEUR; cc++)
+                wdata[idx++] = delays[rr][cc];
+
+        ofstream myfile(fname, ios::binary | ios::trunc);
+        if (!myfile.write((char*) wdata, NBNEUR * NBNEUR * sizeof(int)))
+            throw std::runtime_error("Error while saving matrix of weights.\n");
+        myfile.close();
+    }
+
+    saveMatrix(posnoisein,"data/posNoise.dat");
+    saveMatrix(negnoisein,"data/negNoise.dat");
+
+    saveMatrix(w,"data/w.dat");
+    saveMatrix(wff,"data/wff.dat");
 
     /*
     // NOTE: We implement the machinery for feedforward delays, but they are NOT used (see below).
@@ -411,6 +440,8 @@ int main(int argc, char* argv[])
     }
     */
     //myfile << endl; myfile.close();
+
+
 
     // Initializations done, let's get to it!
 
@@ -470,6 +501,15 @@ int main(int argc, char* argv[])
 
         lgnrates *= (dt/1000.0);  // LGN rates from the pattern file are expressed in Hz. We want it in rate per dt, and dt itself is expressed in ms.
 
+        // for (int i=0; i < 2*17*17; i++) {
+        //     if (i % 17 == 0) {
+        //         cout << "\n";
+        //     }
+        //     cout << (double)lgnrates[i] << ",";
+        // }
+        // cout << endl;
+        // return 1;
+
         // At the beginning of every presentation, we reset everything ! (it is important for the random-patches case which tends to generate epileptic self-sustaining firing; 'normal' learning doesn't need it.)
         v.fill(Eleak);
         resps.col(numpres % NBRESPS).setZero();
@@ -495,9 +535,14 @@ int main(int argc, char* argv[])
             //            lgnfiringsprev = lgnfirings;
 
             if (((PHASE == PULSE) && (numstepthispres >= (double)(PULSESTART)/dt) && (numstepthispres < (double)(PULSESTART + PULSETIME)/dt)) // In the PULSE case, inputs only fire for a short period of time
-                    || ((PHASE != PULSE) && (numstepthispres < NBSTEPSPERPRES - ((double)TIMEZEROINPUT / dt))))   // Otherwise, inputs only fire until the 'relaxation' period at the end of each presentation
-                for (int nn=0; nn < FFRFSIZE; nn++)
-                    lgnfirings(nn) = (rand() / (double)RAND_MAX < abs(lgnrates(nn)) ? 1.0 : 0.0); // Note that this may go non-poisson if the specified lgnrates are too high (i.e. not << 1.0)
+                || ((PHASE != PULSE) && (numstepthispres < NBSTEPSPERPRES - ((double)TIMEZEROINPUT / dt)))) {   // Otherwise, inputs only fire until the 'relaxation' period at the end of each presentation
+                for (int nn=0; nn < FFRFSIZE; nn++) {
+                    double r = rand()/(double)RAND_MAX;
+                    randlgnrates(numstepthispres,nn) = r;
+                    lgnfirings(nn) = (r < abs(lgnrates(nn)) ? 1.0 : 0.0); // Note that this may go non-poisson if the specified lgnrates are too high (i.e. not << 1.0)
+                }
+            }
+
             else
                 lgnfirings.setZero();
 
@@ -535,6 +580,22 @@ int main(int argc, char* argv[])
 
             // This, which ignores FF delays, is much faster.... MAtrix multiplications courtesy of the Eigen library.
             Iff =  wff * lgnfirings * VSTIM;
+            saveVector(Iff,"data/iff-" + to_string(numstepthispres) + ".dat");
+
+            // for(int i = 0; i < FFRFSIZE; i++) {
+            //     cout << lgnrates(i) << ",";
+            //     //cout << (rand()/(double)RAND_MAX) << ",";
+            // }
+
+            // cout << endl;
+            // cout << "divide" << endl;
+            // for(int i = 0; i < FFRFSIZE; i++) {
+            //     cout << lgnfirings(i) << ",";
+            //     //cout << (rand()/(double)RAND_MAX) << ",";
+            // }
+            // cout << endl;
+            // return 1;
+            //cout << wff << endl;
 
             // Now we compute the lateral inputs. Remember that incomingspikes is a circular array.
 
@@ -551,16 +612,26 @@ int main(int argc, char* argv[])
                     if (ni == nj)
                          continue;
                     // If there is a spike at that synapse for the current timestep, we add it to the lateral input for this neuron
+                    int v = incomingspikes2[ni][nj];
+                    int v1 = (v >> 1);
+                    int b = 1 & v;
+                    incomingspikes2[ni][nj] = v1;
+                    int b2 = incomingspikes[ni][nj](numstep % delays[nj][ni]);
+                    if (b != b2) {
+                        cout << "not equal!" << v << "," << v1 << "," << b << "," << b2 << endl;
+                        return 1;
+                    }
                     if (incomingspikes[ni][nj](numstep % delays[nj][ni]) > 0){
 
                     LatInput(ni) += w(ni, nj) * incomingspikes[ni][nj](numstep % delays[nj][ni]);
-                        spikesthisstep(ni, nj) = 1;
+                    spikesthisstep(ni, nj) = 1;
                     // We erase any incoming spikes for this synapse/timestep
                     incomingspikes[ni][nj](numstep % delays[nj][ni]) = 0;
                     }
                 }
 
             Ilat = LATCONNMULT * VSTIM * LatInput;
+            saveVector(Ilat,"data/ilat-" + to_string(numstepthispres) + ".dat");
 
             // This disables all lateral connections - Inhibitory and excitatory
             if (NOLAT)
@@ -568,6 +639,7 @@ int main(int argc, char* argv[])
 
             // Total input (FF + lateral + frozen noise):
             I = Iff + Ilat + posnoisein.col(numstep % NBNOISESTEPS) + negnoisein.col(numstep % NBNOISESTEPS);  //- InhibVect;
+            saveVector(I,"data/i-" + to_string(numstepthispres) + ".dat");
 
             //vprev = v;
 //PRE SPIKE UPDATE
@@ -597,7 +669,6 @@ int main(int argc, char* argv[])
             // Spiking period elapsing... (in paractice, this is not really needed since the spiking period NBSPIKINGSTEPS is set to 1 for all current experiments)
             isspiking = (isspiking.array() - 1).cwiseMax(0);
 
-
             //            refractime = (refractime.array() - dt).cwiseMax(0);
 
 //SPIKE UPDATE
@@ -614,11 +685,13 @@ int main(int argc, char* argv[])
                 for (int ni=0; ni < NBNEUR; ni++){
                     if (!firings[ni]) continue;
                     for (int nj=0; nj < NBNEUR; nj++){
+                        int fire = nj != ni;
+                        incomingspikes2[nj][ni] = incomingspikes2[nj][ni] | (fire << (delays[ni][nj]-1));
                         incomingspikes[nj][ni]( (numstep + delays[ni][nj]) % delays[ni][nj] ) = 1;
-
                     }
                 }
             }
+
 //POST SPIKE UPDATE
             // "Wrong" version: firing if above threshold, immediately reset at Vreset.
             //firings = (v.array() > vthresh.array()).select(OneV, ZeroV);
@@ -655,6 +728,7 @@ int main(int argc, char* argv[])
 
             vneg = vneg + (dt / TAUVNEG) * (vprev - vneg);
             vpos = vpos + (dt / TAUVPOS) * (vprev - vpos);
+
 //LEARNING
             if ((PHASE == LEARNING)  && (numpres >= 401) )
             {
@@ -692,6 +766,67 @@ int main(int argc, char* argv[])
                 wff = wff.cwiseMin(MAXW);
                 w = w.cwiseMin(MAXW);
             }
+
+            {
+                string fname = "data/existingspikes-"+ to_string(numstepthispres) + ".dat"; //add number
+                int wdata[NBNEUR*NBNEUR];
+                int idx=0;
+                for (int rr=0; rr < NBNEUR; rr++)
+                    for (int cc=0; cc < NBNEUR; cc++)
+                        wdata[idx++] = incomingspikes2[rr][cc];
+
+                ofstream myfile(fname, ios::binary | ios::trunc);
+                if (!myfile.write((char*) wdata, NBNEUR * NBNEUR * sizeof(int)))
+                    throw std::runtime_error("Error while saving matrix of weights.\n");
+                myfile.close();
+            }
+            {
+                string fname = "data/spikesthisstep-"+ to_string(numstepthispres) + ".dat"; //add number
+                int wdata[NBNEUR*NBNEUR];
+                int idx=0;
+                for (int rr=0; rr < NBNEUR; rr++)
+                    for (int cc=0; cc < NBNEUR; cc++)
+                        wdata[idx++] = spikesthisstep(rr,cc);
+
+                ofstream myfile(fname, ios::binary | ios::trunc);
+                if (!myfile.write((char*) wdata, NBNEUR * NBNEUR * sizeof(int)))
+                    throw std::runtime_error("Error while saving matrix of weights.\n");
+                myfile.close();
+            }
+
+            {
+                string fname = "data/isspiking-"+ to_string(numstepthispres) + ".dat"; //add number
+                int wdata[NBNEUR];
+                int idx=0;
+                for (int cc=0; cc < NBNEUR; cc++)
+                    wdata[idx++] = isspiking(cc);
+
+                ofstream myfile(fname, ios::binary | ios::trunc);
+                if (!myfile.write((char*) wdata, NBNEUR * sizeof(int)))
+                    throw std::runtime_error("Error while saving matrix of weights.\n");
+                myfile.close();
+            }
+
+            saveMatrix(w,"data/w-" + to_string(numstepthispres) + ".dat");
+            saveMatrix(wff,"data/wff-" + to_string(numstepthispres) + ".dat");
+            saveVector(lgnrates,"data/lgnrates-" + to_string(numstepthispres) + ".dat");
+            saveVector(v,"data/v-" + to_string(numstepthispres) + ".dat");
+            saveVector(vthresh,"data/vthresh-" + to_string(numstepthispres) + ".dat");
+            saveVector(z,"data/z-" + to_string(numstepthispres) + ".dat");
+            saveVector(wadap,"data/wadap-" + to_string(numstepthispres) + ".dat");
+            saveVector(lgnfirings,"data/lgnfirings-" + to_string(numstepthispres) + ".dat");
+            saveVector(vlongtrace,"data/vlongtrace-" + to_string(numstepthispres) + ".dat");
+            saveVector(xplast_lat,"data/xplastLat-" + to_string(numstepthispres) + ".dat");
+            saveVector(xplast_ff,"data/xplastFF-" + to_string(numstepthispres) + ".dat");
+            saveVector(vneg,"data/vneg-" + to_string(numstepthispres) + ".dat");
+            saveVector(vpos,"data/vpos-" + to_string(numstepthispres) + ".dat");
+            saveVector(vprev,"data/vprev-" + to_string(numstepthispres) + ".dat");
+
+            if (numstepthispres > 200) {
+                saveMatrix(randlgnrates,"data/randlgnrates.dat");
+                return 1;
+            }
+
 //LOGGING
             // Storing some indicator variablkes...
 
@@ -863,6 +998,37 @@ void saveWeights(MatrixXd& wgt, string fname)
 
     ofstream myfile(fname, ios::binary | ios::trunc);
     if (!myfile.write((char*) wdata, wgt.rows() * wgt.cols() * sizeof(double)))
+        throw std::runtime_error("Error while saving matrix of weights.\n");
+    myfile.close();
+}
+
+void saveMatrix(MatrixXd& wgt, string fname)
+{
+    double* wdata = new double[wgt.rows() * wgt.cols()];
+    //double wdata[wgt.rows() * wgt.cols()];
+    int idx=0;
+    //cout << endl << "Saving weights..." << endl;
+    for (int rr=0; rr < wgt.rows(); rr++)
+        for (int cc=0; cc < wgt.cols(); cc++)
+            wdata[idx++] = wgt(rr,cc);
+
+    ofstream myfile(fname, ios::binary | ios::trunc);
+    if (!myfile.write((char*) wdata, wgt.rows() * wgt.cols() * sizeof(double)))
+        throw std::runtime_error("Error while saving matrix of weights.\n");
+    myfile.close();
+    delete wdata;
+}
+
+void saveVector(VectorXd& wgt, string fname)
+{
+    double wdata[wgt.size()];
+    int idx=0;
+    //cout << endl << "Saving weights..." << endl;
+    for (int cc=0; cc < wgt.size(); cc++)
+        wdata[idx++] = wgt(cc);
+
+    ofstream myfile(fname, ios::binary | ios::trunc);
+    if (!myfile.write((char*) wdata, wgt.size() * sizeof(double)))
         throw std::runtime_error("Error while saving matrix of weights.\n");
     myfile.close();
 }
