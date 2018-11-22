@@ -628,7 +628,7 @@ int main(int argc, char* argv[])
                     // We erase any incoming spikes for this synapse/timestep
                     incomingspikes[ni][nj](numstep % delays[nj][ni]) = 0;
                     }
-                }
+               }
 
             Ilat = LATCONNMULT * VSTIM * LatInput;
             saveVector(Ilat,"data/ilat-" + to_string(numstepthispres) + ".dat");
