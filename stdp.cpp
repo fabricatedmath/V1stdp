@@ -824,7 +824,8 @@ int main(int argc, char* argv[])
 
             if (numstepthispres > 200) {
                 saveMatrix(randlgnrates,"data/randlgnrates.dat");
-                return 1;
+                cout << "Exiting early..." << endl;
+                return 0;
             }
 
 //LOGGING

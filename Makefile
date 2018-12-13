@@ -2,8 +2,11 @@ all: build
 
 build: stdp
 
-run:
+stdp: stdp.cpp
 	g++ -I eigen-git-mirror/ -O3 -std=c++11 stdp.cpp -o stdp
+
+run: build
+	rm -f data/*
 	./stdp learn
 
 clean:
