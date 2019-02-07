@@ -9,6 +9,8 @@
 #include <stdexcept>
 #include <ctime>
 #include <Eigen/Dense>
+#include <loader.h>
+
 #define LEARNING 1234
 #define TESTING 4321
 #define MIXING 5678
