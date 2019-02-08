@@ -100,6 +100,9 @@ void saveVector(VectorXd& wgt, string fn);
 void saveWeights(MatrixXd& wgt, string fn);
 void readWeights(MatrixXd& wgt, string fn);
 
+typedef Matrix<unsigned int, Dynamic, 1> VectorXu;
+typedef Matrix<unsigned int, Dynamic, Dynamic> MatrixXu;
+
 int main(int argc, char* argv[])
 {
     srand(0);
@@ -290,7 +293,10 @@ int main(int argc, char* argv[])
     // The noise excitatory input is a Poisson process (separate for each cell) with a constant rate (in KHz / per ms)
     // We store it as "frozen noise" to save time.
     MatrixXd negnoisein = - poissonMatrix(dt * MatrixXd::Constant(NBNEUR, NBNOISESTEPS, NEGNOISERATE)) * VSTIM;
+    MatrixXu negNoiseSlice = MatrixXu(NBSTEPSPERPRES, NBNEUR);
+
     MatrixXd posnoisein = poissonMatrix(dt * MatrixXd::Constant(NBNEUR, NBNOISESTEPS, POSNOISERATE)) * VSTIM;
+    MatrixXu posNoiseSlice = MatrixXu(NBSTEPSPERPRES, NBNEUR);
     if (NONOISE || NOSPIKE) // If No-noise or no-spike, suppress the background bombardment of random I and E spikes
     {
         posnoisein.setZero();
@@ -344,7 +350,11 @@ int main(int argc, char* argv[])
     MatrixXi spikesthisstep(NBNEUR, NBNEUR);
 
     double ALTDS[NBNEUR]; for (int nn=0; nn < NBNEUR; nn++) ALTDS[nn] = BASEALTD + RANDALTD*( (double)rand() / (double)RAND_MAX );
-
+    VectorXd altds = VectorXd(NBNEUR);
+    for (int nn = 0; nn < NBNEUR; nn++) {
+        altds(nn) = ALTDS[nn];
+    }
+    storeVector("data/altds", altds);
     VectorXd lgnrates = VectorXd::Zero(FFRFSIZE);
     VectorXd lgnratesS1 = VectorXd::Zero(FFRFSIZE);
     VectorXd lgnratesS2 = VectorXd::Zero(FFRFSIZE);
@@ -401,8 +411,8 @@ int main(int argc, char* argv[])
     }
     storeMatrix("data/delays",delays2);
 
-    storeMatrix("data/posNoise",posnoisein);
-    storeMatrix("data/negNoise",negnoisein);
+    storeMatrix("data/posNoiseAll",posnoisein);
+    storeMatrix("data/negNoiseAll",negnoisein);
 
     storeMatrix("data/w", w);
     storeMatrix("data/wff", wff);
@@ -528,10 +538,11 @@ int main(int argc, char* argv[])
                 for (int nn=0; nn < FFRFSIZE; nn++) {
                     double r = rand()/(double)RAND_MAX;
                     randlgnrates(numstepthispres,nn) = r;
+
                     lgnfirings(nn) = (r < abs(lgnrates(nn)) ? 1.0 : 0.0); // Note that this may go non-poisson if the specified lgnrates are too high (i.e. not << 1.0)
                 }
-            }
 
+            }
             else
                 lgnfirings.setZero();
 
@@ -628,6 +639,12 @@ int main(int argc, char* argv[])
 
             // Total input (FF + lateral + frozen noise):
             I = Iff + Ilat + posnoisein.col(numstep % NBNOISESTEPS) + negnoisein.col(numstep % NBNOISESTEPS);  //- InhibVect;
+            VectorXu posNoiseCol = posnoisein.col(numstep % NBNOISESTEPS).cast<unsigned int>();
+            VectorXu negNoiseCol = negnoisein.col(numstep % NBNOISESTEPS).cast<unsigned int>();
+
+            posNoiseSlice.row(numstep) = posNoiseCol;
+            negNoiseSlice.row(numstep) = negNoiseCol;
+
             storeVector("data/i-" + to_string(numstepthispres), I);
 
             //vprev = v;
@@ -776,8 +793,10 @@ int main(int argc, char* argv[])
             storeVector("data/vpos-" + to_string(numstepthispres), vpos);
             storeVector("data/vprev-" + to_string(numstepthispres), vprev);
 
-            if (numstepthispres > 200) {
+            if (numstepthispres + 1 == NBSTEPSPERPRES) {
                 storeMatrix("data/randlgnrates", randlgnrates);
+                storeMatrix("data/posnoise", posNoiseSlice);
+                storeMatrix("data/negnoise", negNoiseSlice);
                 cout << "Exiting early..." << endl;
                 return 0;
             }
