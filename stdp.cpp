@@ -299,14 +299,14 @@ int main(int argc, char* argv[])
 
     // Note that delays indices are arranged in "from"-"to" order (different from incomingspikes[i][j]. where i is the target neuron and j is the source synapse)
     int delays[NBNEUR][NBNEUR];
+    MatrixXi delays2 = MatrixXi(NBNEUR,NBNEUR);
     //int delaysFF[FFRFSIZE][NBNEUR];
 
 
     // The incoming spikes (both lateral and FF) are stored in an array of vectors (one per neuron/incoming synapse); each vector is used as a circular array, containing the incoming spikes at this synapse at successive timesteps:
     VectorXi incomingspikes[NBNEUR][NBNEUR];
-    int incomingspikes2[NBNEUR][NBNEUR];
+    MatrixXi incomingspikes2 = MatrixXi(NBNEUR,NBNEUR);
     //VectorXi incomingFFspikes[NBNEUR][FFRFSIZE];
-
 
     VectorXd v =  VectorXd::Constant(NBNEUR, -70.5); // VectorXd::Zero(NBNEUR); // -70.5 is approximately the resting potential of the Izhikevich neurons, as it is of the AdEx neurons used in Clopath's experiments
 
@@ -394,30 +394,18 @@ int main(int argc, char* argv[])
                 mydelay = 1;
             // cout << mydelay << " ";
             delays[nj][ni] = mydelay;
+            delays2(nj,ni) = mydelay;
             incomingspikes[ni][nj] = VectorXi::Zero(mydelay);
-            incomingspikes2[ni][nj] = 0;
+            incomingspikes2(ni,nj) = 0;
         }
     }
-    {
-        string fname = "data/delays.dat";
-        int wdata[NBNEUR*NBNEUR];
-        int idx=0;
-        //cout << endl << "Saving weights..." << endl;
-        for (int rr=0; rr < NBNEUR; rr++)
-            for (int cc=0; cc < NBNEUR; cc++)
-                wdata[idx++] = delays[rr][cc];
+    storeMatrix("data/delays",delays2);
 
-        ofstream myfile(fname, ios::binary | ios::trunc);
-        if (!myfile.write((char*) wdata, NBNEUR * NBNEUR * sizeof(int)))
-            throw std::runtime_error("Error while saving matrix of weights.\n");
-        myfile.close();
-    }
+    storeMatrix("data/posNoise",posnoisein);
+    storeMatrix("data/negNoise",negnoisein);
 
-    saveMatrix(posnoisein,"data/posNoise.dat");
-    saveMatrix(negnoisein,"data/negNoise.dat");
-
-    saveMatrix(w,"data/w.dat");
-    saveMatrix(wff,"data/wff.dat");
+    storeMatrix("data/w", w);
+    storeMatrix("data/wff", wff);
 
     /*
     // NOTE: We implement the machinery for feedforward delays, but they are NOT used (see below).
@@ -442,7 +430,6 @@ int main(int argc, char* argv[])
     }
     */
     //myfile << endl; myfile.close();
-
 
 
     // Initializations done, let's get to it!
@@ -582,7 +569,7 @@ int main(int argc, char* argv[])
 
             // This, which ignores FF delays, is much faster.... MAtrix multiplications courtesy of the Eigen library.
             Iff =  wff * lgnfirings * VSTIM;
-            saveVector(Iff,"data/iff-" + to_string(numstepthispres) + ".dat");
+            storeVector("data/iff-" + to_string(numstepthispres), Iff);
 
             // for(int i = 0; i < FFRFSIZE; i++) {
             //     cout << lgnrates(i) << ",";
@@ -614,10 +601,10 @@ int main(int argc, char* argv[])
                     if (ni == nj)
                          continue;
                     // If there is a spike at that synapse for the current timestep, we add it to the lateral input for this neuron
-                    int v = incomingspikes2[ni][nj];
+                    int v = incomingspikes2(ni,nj);
                     int v1 = (v >> 1);
                     int b = 1 & v;
-                    incomingspikes2[ni][nj] = v1;
+                    incomingspikes2(ni,nj) = v1;
                     int b2 = incomingspikes[ni][nj](numstep % delays[nj][ni]);
                     if (b != b2) {
                         cout << "not equal!" << v << "," << v1 << "," << b << "," << b2 << endl;
@@ -633,7 +620,7 @@ int main(int argc, char* argv[])
                }
 
             Ilat = LATCONNMULT * VSTIM * LatInput;
-            saveVector(Ilat,"data/ilat-" + to_string(numstepthispres) + ".dat");
+            storeVector("data/ilat-" + to_string(numstepthispres), Ilat);
 
             // This disables all lateral connections - Inhibitory and excitatory
             if (NOLAT)
@@ -641,7 +628,7 @@ int main(int argc, char* argv[])
 
             // Total input (FF + lateral + frozen noise):
             I = Iff + Ilat + posnoisein.col(numstep % NBNOISESTEPS) + negnoisein.col(numstep % NBNOISESTEPS);  //- InhibVect;
-            saveVector(I,"data/i-" + to_string(numstepthispres) + ".dat");
+            storeVector("data/i-" + to_string(numstepthispres), I);
 
             //vprev = v;
 //PRE SPIKE UPDATE
@@ -688,7 +675,7 @@ int main(int argc, char* argv[])
                     if (!firings[ni]) continue;
                     for (int nj=0; nj < NBNEUR; nj++){
                         int fire = nj != ni;
-                        incomingspikes2[nj][ni] = incomingspikes2[nj][ni] | (fire << (delays[ni][nj]-1));
+                        incomingspikes2(nj,ni) = incomingspikes2(nj,ni) | (fire << (delays[ni][nj]-1));
                         incomingspikes[nj][ni]( (numstep + delays[ni][nj]) % delays[ni][nj] ) = 1;
                     }
                 }
@@ -769,63 +756,28 @@ int main(int argc, char* argv[])
                 w = w.cwiseMin(MAXW);
             }
 
-            {
-                string fname = "data/existingspikes-"+ to_string(numstepthispres) + ".dat"; //add number
-                int wdata[NBNEUR*NBNEUR];
-                int idx=0;
-                for (int rr=0; rr < NBNEUR; rr++)
-                    for (int cc=0; cc < NBNEUR; cc++)
-                        wdata[idx++] = incomingspikes2[rr][cc];
+            storeMatrix("data/existingspikes-" + to_string(numstepthispres), incomingspikes2);
+            storeMatrix("data/spikesthisstep-"+ to_string(numstepthispres), spikesthisstep);
+            storeVector("data/isspiking-"+ to_string(numstepthispres), isspiking);
 
-                ofstream myfile(fname, ios::binary | ios::trunc);
-                if (!myfile.write((char*) wdata, NBNEUR * NBNEUR * sizeof(int)))
-                    throw std::runtime_error("Error while saving matrix of weights.\n");
-                myfile.close();
-            }
-            {
-                string fname = "data/spikesthisstep-"+ to_string(numstepthispres) + ".dat"; //add number
-                int wdata[NBNEUR*NBNEUR];
-                int idx=0;
-                for (int rr=0; rr < NBNEUR; rr++)
-                    for (int cc=0; cc < NBNEUR; cc++)
-                        wdata[idx++] = spikesthisstep(rr,cc);
+            storeMatrix("data/w-" + to_string(numstepthispres) , w);
+            storeMatrix("data/wff-" + to_string(numstepthispres), wff);
+            storeVector("data/lgnrates-" + to_string(numstepthispres), lgnrates);
+            storeVector("data/v-" + to_string(numstepthispres), v);
 
-                ofstream myfile(fname, ios::binary | ios::trunc);
-                if (!myfile.write((char*) wdata, NBNEUR * NBNEUR * sizeof(int)))
-                    throw std::runtime_error("Error while saving matrix of weights.\n");
-                myfile.close();
-            }
-
-            {
-                string fname = "data/isspiking-"+ to_string(numstepthispres) + ".dat"; //add number
-                int wdata[NBNEUR];
-                int idx=0;
-                for (int cc=0; cc < NBNEUR; cc++)
-                    wdata[idx++] = isspiking(cc);
-
-                ofstream myfile(fname, ios::binary | ios::trunc);
-                if (!myfile.write((char*) wdata, NBNEUR * sizeof(int)))
-                    throw std::runtime_error("Error while saving matrix of weights.\n");
-                myfile.close();
-            }
-
-            saveMatrix(w,"data/w-" + to_string(numstepthispres) + ".dat");
-            saveMatrix(wff,"data/wff-" + to_string(numstepthispres) + ".dat");
-            saveVector(lgnrates,"data/lgnrates-" + to_string(numstepthispres) + ".dat");
-            saveVector(v,"data/v-" + to_string(numstepthispres) + ".dat");
-            saveVector(vthresh,"data/vthresh-" + to_string(numstepthispres) + ".dat");
-            saveVector(z,"data/z-" + to_string(numstepthispres) + ".dat");
-            saveVector(wadap,"data/wadap-" + to_string(numstepthispres) + ".dat");
-            saveVector(lgnfirings,"data/lgnfirings-" + to_string(numstepthispres) + ".dat");
-            saveVector(vlongtrace,"data/vlongtrace-" + to_string(numstepthispres) + ".dat");
-            saveVector(xplast_lat,"data/xplastLat-" + to_string(numstepthispres) + ".dat");
-            saveVector(xplast_ff,"data/xplastFF-" + to_string(numstepthispres) + ".dat");
-            saveVector(vneg,"data/vneg-" + to_string(numstepthispres) + ".dat");
-            saveVector(vpos,"data/vpos-" + to_string(numstepthispres) + ".dat");
-            saveVector(vprev,"data/vprev-" + to_string(numstepthispres) + ".dat");
+            storeVector("data/vthresh-" + to_string(numstepthispres), vthresh);
+            storeVector("data/z-" + to_string(numstepthispres), z);
+            storeVector("data/wadap-" + to_string(numstepthispres), wadap);
+            storeVector("data/lgnfirings-" + to_string(numstepthispres), lgnfirings);
+            storeVector("data/vlongtrace-" + to_string(numstepthispres), vlongtrace);
+            storeVector("data/xplastLat-" + to_string(numstepthispres), xplast_lat);
+            storeVector("data/xplastFF-" + to_string(numstepthispres), xplast_ff);
+            storeVector("data/vneg-" + to_string(numstepthispres), vneg);
+            storeVector("data/vpos-" + to_string(numstepthispres), vpos);
+            storeVector("data/vprev-" + to_string(numstepthispres), vprev);
 
             if (numstepthispres > 200) {
-                saveMatrix(randlgnrates,"data/randlgnrates.dat");
+                storeMatrix("data/randlgnrates", randlgnrates);
                 cout << "Exiting early..." << endl;
                 return 0;
             }

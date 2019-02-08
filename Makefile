@@ -3,7 +3,7 @@ all: build
 build: stdp
 
 stdp: stdp.cpp
-	g++ -I include/ -I eigen-git-mirror/ -O3 -std=c++14 stdp.cpp -o stdp
+	g++ -Iinclude/ -Ieigen-git-mirror/ -O3 -std=c++14 stdp.cpp -o stdp -lboost_serialization
 
 run: build
 	rm -f data/*
