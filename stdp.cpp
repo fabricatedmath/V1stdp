@@ -450,6 +450,7 @@ int main(int argc, char* argv[])
     // For each stimulus presentation...
     for (int numpres=0; numpres < NBPRES; numpres++)
     {
+        cout << "numpres: " << numpres << endl;
         // Where are we in the data file?
         int posindata = ((numpres % nbpatchesinfile) * FFRFSIZE / 2 );
         if (PHASE == PULSE)
@@ -497,7 +498,6 @@ int main(int argc, char* argv[])
         INPUTMULT *= 2.0;
 
         lgnrates *= INPUTMULT; // We put inputmult here to ensure that it is reflected in the actual number of incoming spikes
-
         lgnrates *= (dt/1000.0);  // LGN rates from the pattern file are expressed in Hz. We want it in rate per dt, and dt itself is expressed in ms.
 
         // for (int i=0; i < 2*17*17; i++) {
@@ -516,9 +516,12 @@ int main(int argc, char* argv[])
         //        lgnfiringsprev.setZero();
         firings.setZero();
         //        firingsprev.setZero();
-        for (int ni=0; ni < NBNEUR ; ni++)
-            for (int nj=0; nj < NBNEUR ; nj++)
+        for (int ni=0; ni < NBNEUR ; ni++) {
+            for (int nj=0; nj < NBNEUR ; nj++) {
                 incomingspikes[ni][nj].fill(0);
+                incomingspikes2(ni,nj) = 0;
+            }
+        }
 
         // Stimulus presentation
         for (int numstepthispres=0; numstepthispres < NBSTEPSPERPRES; numstepthispres++)
@@ -580,7 +583,6 @@ int main(int argc, char* argv[])
 
             // This, which ignores FF delays, is much faster.... MAtrix multiplications courtesy of the Eigen library.
             Iff =  wff * lgnfirings * VSTIM;
-            storeVector("data/iff-" + to_string(numstepthispres), Iff);
 
             // for(int i = 0; i < FFRFSIZE; i++) {
             //     cout << lgnrates(i) << ",";
@@ -602,9 +604,8 @@ int main(int argc, char* argv[])
             VectorXd LatInput = VectorXd::Zero(NBNEUR);
 
             //spikesthisstep.setZero();
-            for (int ni=0; ni< NBNEUR; ni++)
-                for (int nj=0; nj< NBNEUR; nj++)
-                {
+            for (int ni=0; ni< NBNEUR; ni++) {
+                for (int nj=0; nj< NBNEUR; nj++) {
                     // If NOELAT, E-E synapses are disabled.
                     if (NOELAT && (nj < 100) && (ni < 100))
                         continue;
@@ -629,9 +630,9 @@ int main(int argc, char* argv[])
                     incomingspikes[ni][nj](numstep % delays[nj][ni]) = 0;
                     }
                }
+            }
 
             Ilat = LATCONNMULT * VSTIM * LatInput;
-            storeVector("data/ilat-" + to_string(numstepthispres), Ilat);
 
             // This disables all lateral connections - Inhibitory and excitatory
             if (NOLAT)
@@ -642,10 +643,8 @@ int main(int argc, char* argv[])
             VectorXu posNoiseCol = posnoisein.col(numstep % NBNOISESTEPS).cast<unsigned int>();
             VectorXu negNoiseCol = negnoisein.col(numstep % NBNOISESTEPS).cast<unsigned int>();
 
-            posNoiseSlice.row(numstep) = posNoiseCol;
-            negNoiseSlice.row(numstep) = negNoiseCol;
-
-            storeVector("data/i-" + to_string(numstepthispres), I);
+            posNoiseSlice.row(numstepthispres) = posNoiseCol;
+            negNoiseSlice.row(numstepthispres) = negNoiseCol;
 
             //vprev = v;
 //PRE SPIKE UPDATE
@@ -773,32 +772,38 @@ int main(int argc, char* argv[])
                 w = w.cwiseMin(MAXW);
             }
 
-            storeMatrix("data/existingspikes-" + to_string(numstepthispres), incomingspikes2);
-            storeMatrix("data/spikesthisstep-"+ to_string(numstepthispres), spikesthisstep);
-            storeVector("data/isspiking-"+ to_string(numstepthispres), isspiking);
+            if (numpres >= 402) {
+                storeVector("data/iff-" + to_string(numstepthispres), Iff);
+                storeVector("data/ilat-" + to_string(numstepthispres), Ilat);
+                storeVector("data/i-" + to_string(numstepthispres), I);
 
-            storeMatrix("data/w-" + to_string(numstepthispres) , w);
-            storeMatrix("data/wff-" + to_string(numstepthispres), wff);
-            storeVector("data/lgnrates-" + to_string(numstepthispres), lgnrates);
-            storeVector("data/v-" + to_string(numstepthispres), v);
+                storeMatrix("data/existingspikes-" + to_string(numstepthispres), incomingspikes2);
+                storeMatrix("data/spikesthisstep-"+ to_string(numstepthispres), spikesthisstep);
+                storeVector("data/isspiking-"+ to_string(numstepthispres), isspiking);
 
-            storeVector("data/vthresh-" + to_string(numstepthispres), vthresh);
-            storeVector("data/z-" + to_string(numstepthispres), z);
-            storeVector("data/wadap-" + to_string(numstepthispres), wadap);
-            storeVector("data/lgnfirings-" + to_string(numstepthispres), lgnfirings);
-            storeVector("data/vlongtrace-" + to_string(numstepthispres), vlongtrace);
-            storeVector("data/xplastLat-" + to_string(numstepthispres), xplast_lat);
-            storeVector("data/xplastFF-" + to_string(numstepthispres), xplast_ff);
-            storeVector("data/vneg-" + to_string(numstepthispres), vneg);
-            storeVector("data/vpos-" + to_string(numstepthispres), vpos);
-            storeVector("data/vprev-" + to_string(numstepthispres), vprev);
+                storeMatrix("data/w-" + to_string(numstepthispres) , w);
+                storeMatrix("data/wff-" + to_string(numstepthispres), wff);
+                storeVector("data/lgnrates-" + to_string(numstepthispres), lgnrates);
+                storeVector("data/v-" + to_string(numstepthispres), v);
 
-            if (numstepthispres + 1 == NBSTEPSPERPRES) {
-                storeMatrix("data/randlgnrates", randlgnrates);
-                storeMatrix("data/posnoise", posNoiseSlice);
-                storeMatrix("data/negnoise", negNoiseSlice);
-                cout << "Exiting early..." << endl;
-                return 0;
+                storeVector("data/vthresh-" + to_string(numstepthispres), vthresh);
+                storeVector("data/z-" + to_string(numstepthispres), z);
+                storeVector("data/wadap-" + to_string(numstepthispres), wadap);
+                storeVector("data/lgnfirings-" + to_string(numstepthispres), lgnfirings);
+                storeVector("data/vlongtrace-" + to_string(numstepthispres), vlongtrace);
+                storeVector("data/xplastLat-" + to_string(numstepthispres), xplast_lat);
+                storeVector("data/xplastFF-" + to_string(numstepthispres), xplast_ff);
+                storeVector("data/vneg-" + to_string(numstepthispres), vneg);
+                storeVector("data/vpos-" + to_string(numstepthispres), vpos);
+                storeVector("data/vprev-" + to_string(numstepthispres), vprev);
+
+                if (numstepthispres + 1 == NBSTEPSPERPRES) {
+                    storeMatrix("data/randlgnrates", randlgnrates);
+                    storeMatrix("data/posnoise", posNoiseSlice);
+                    storeMatrix("data/negnoise", negNoiseSlice);
+                    cout << "Exiting early..." << endl;
+                    return 0;
+                }
             }
 
 //LOGGING
