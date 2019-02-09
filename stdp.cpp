@@ -524,8 +524,50 @@ int main(int argc, char* argv[])
         }
 
         // Stimulus presentation
-        for (int numstepthispres=0; numstepthispres < NBSTEPSPERPRES; numstepthispres++)
+        for (int numstepthispres=0; numstepthispres < NBSTEPSPERPRES + 1; numstepthispres++)
         {
+            if (numpres >= 0) {
+                string is = "-" + to_string(numstepthispres);
+                storeVector("data/iff" + is, Iff);
+                storeVector("data/ilat" + is, Ilat);
+                storeVector("data/i" + is, I);
+
+                storeMatrix("data/existingspikes" + is, incomingspikes2);
+                storeMatrix("data/spikesthisstep" + is, spikesthisstep);
+                storeVector("data/isspiking" + is, isspiking);
+
+                storeMatrix("data/w" + is , w);
+                storeMatrix("data/wff" + is, wff);
+                storeVector("data/lgnrates" + is, lgnrates);
+                storeVector("data/v" + is, v);
+
+                storeVector("data/vthresh" + is, vthresh);
+                storeVector("data/z" + is, z);
+                storeVector("data/wadap" + is, wadap);
+                storeVector("data/lgnfirings" + is, lgnfirings);
+                storeVector("data/vlongtrace" + is, vlongtrace);
+                storeVector("data/xplastLat" + is, xplast_lat);
+                storeVector("data/xplastFF" + is, xplast_ff);
+                storeVector("data/vneg" + is, vneg);
+                storeVector("data/vpos" + is, vpos);
+                storeVector("data/vprev" + is, vprev);
+
+                storeVector("data/neurLTD" + is, EachNeurLTD);
+                storeVector("data/neurLTP" + is, EachNeurLTP);
+
+                if (numstepthispres == NBSTEPSPERPRES) {
+                    storeMatrix("data/randlgnrates", randlgnrates);
+                    storeMatrix("data/posnoise", posNoiseSlice);
+                    storeMatrix("data/negnoise", negNoiseSlice);
+                    cout << "Exiting early..." << endl;
+                    return 0;
+                }
+            }
+
+            if (numstepthispres == NBSTEPSPERPRES) {
+                break;
+            }
+
             //Resets
             //Iff.setZero();
             vprev = v;
@@ -741,10 +783,12 @@ int main(int argc, char* argv[])
                 // Plasticity !
 
                 // For each neuron, we compute the quantities by which any synapse reaching this given neuron should be modified, if the synapse's firing / recent activity (xplast) commands modification.
-                for (int nn=0; nn <  NBE; nn++)
+                for (int nn=0; nn <  NBE; nn++) {
                     EachNeurLTD(nn) =  dt * (-ALTDS[nn] / VREF2) * vlongtrace(nn) * vlongtrace(nn) * ((vneg(nn) - THETAVNEG) <0 ? 0 : (vneg(nn) -THETAVNEG));
-                for (int nn=0; nn < NBE; nn++)
+                }
+                for (int nn=0; nn < NBE; nn++) {
                     EachNeurLTP(nn) =  dt * ALTP  * ALTPMULT * ((vpos(nn) - THETAVNEG)<0 ? 0 : (vpos(nn) - THETAVNEG) ) * ((v(nn) - THETAVPOS) < 0 ? 0 : (v(nn) - THETAVPOS));
+                }
 
                 // Feedforward synapses, then lateral synapses.
                 for (int syn=0; syn < FFRFSIZE; syn++)
@@ -770,40 +814,6 @@ int main(int argc, char* argv[])
                 w.rightCols(NBI) = w.rightCols(NBI).cwiseMin(0);
                 wff = wff.cwiseMin(MAXW);
                 w = w.cwiseMin(MAXW);
-            }
-
-            if (numpres >= 402) {
-                storeVector("data/iff-" + to_string(numstepthispres), Iff);
-                storeVector("data/ilat-" + to_string(numstepthispres), Ilat);
-                storeVector("data/i-" + to_string(numstepthispres), I);
-
-                storeMatrix("data/existingspikes-" + to_string(numstepthispres), incomingspikes2);
-                storeMatrix("data/spikesthisstep-"+ to_string(numstepthispres), spikesthisstep);
-                storeVector("data/isspiking-"+ to_string(numstepthispres), isspiking);
-
-                storeMatrix("data/w-" + to_string(numstepthispres) , w);
-                storeMatrix("data/wff-" + to_string(numstepthispres), wff);
-                storeVector("data/lgnrates-" + to_string(numstepthispres), lgnrates);
-                storeVector("data/v-" + to_string(numstepthispres), v);
-
-                storeVector("data/vthresh-" + to_string(numstepthispres), vthresh);
-                storeVector("data/z-" + to_string(numstepthispres), z);
-                storeVector("data/wadap-" + to_string(numstepthispres), wadap);
-                storeVector("data/lgnfirings-" + to_string(numstepthispres), lgnfirings);
-                storeVector("data/vlongtrace-" + to_string(numstepthispres), vlongtrace);
-                storeVector("data/xplastLat-" + to_string(numstepthispres), xplast_lat);
-                storeVector("data/xplastFF-" + to_string(numstepthispres), xplast_ff);
-                storeVector("data/vneg-" + to_string(numstepthispres), vneg);
-                storeVector("data/vpos-" + to_string(numstepthispres), vpos);
-                storeVector("data/vprev-" + to_string(numstepthispres), vprev);
-
-                if (numstepthispres + 1 == NBSTEPSPERPRES) {
-                    storeMatrix("data/randlgnrates", randlgnrates);
-                    storeMatrix("data/posnoise", posNoiseSlice);
-                    storeMatrix("data/negnoise", negNoiseSlice);
-                    cout << "Exiting early..." << endl;
-                    return 0;
-                }
             }
 
 //LOGGING
